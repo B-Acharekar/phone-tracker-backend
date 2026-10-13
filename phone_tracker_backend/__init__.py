@@ -10,6 +10,7 @@ from .routes.groups import bp as groups_bp
 from .routes.profile import bp as profile_bp
 from .routes.groups import bp as groups_bp
 from .routes.sharing import bp as sharing_bp
+from .routes.feedback import bp as feedback_bp
 from .realtime import register_realtime
 
 socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")
@@ -25,6 +26,7 @@ def create_app(config_class=Config):
     app.register_blueprint(profile_bp, url_prefix="/api/v1")
     app.register_blueprint(groups_bp, url_prefix="/api/v1")
     app.register_blueprint(sharing_bp, url_prefix="/api/v1")
+    app.register_blueprint(feedback_bp, url_prefix="/api/v1")
     register_realtime(socketio, app)
 
     @app.get("/health")
