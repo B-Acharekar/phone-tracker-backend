@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+*.json
+.venv/
+__pycache__/
+*.py[cod]
+phone_tracker.db
