@@ -8,3 +8,4 @@ __pycache__/
 phone_tracker.db
 output/
 temp/
+tmp/

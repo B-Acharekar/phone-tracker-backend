@@ -25,7 +25,16 @@ def iso_timestamp(value):
 
 def is_friend(first_id, second_id):
     snap = svc().ref("friendships", friendship_id(first_id, second_id)).get()
-    return snap.exists and first_id in (snap.to_dict() or {}).get("members", []) and second_id in (snap.to_dict() or {}).get("members", [])
+    if snap.exists and first_id in (snap.to_dict() or {}).get("members", []) and second_id in (snap.to_dict() or {}).get("members", []):
+        return True
+    # Keep older accepted requests compatible with the newer friendship index.
+    # Some existing accounts were accepted before the index was introduced.
+    for request_snap in svc().db.collection("friendRequests").stream():
+        row = request_snap.to_dict() or {}
+        members = {row.get("from_id"), row.get("to_id")}
+        if row.get("status") == "accepted" and {first_id, second_id} == members:
+            return True
+    return False
 
 def location_permission_id(owner_id, viewer_id):
     return f"{owner_id}_{viewer_id}"
@@ -127,7 +136,7 @@ def list_friends():
     This is the REST equivalent of the reference app's friends/{deviceId}
     listener and active_shares/{friendId} snapshot.
     """
-    rows = []
+    friend_ids = set()
     for snap in svc().db.collection("friendships").stream():
         data = snap.to_dict() or {}
         members = data.get("members", [])
@@ -136,6 +145,22 @@ def list_friends():
         friend_id = next((member for member in members if member != g.device_id), None)
         if not friend_id:
             continue
+        friend_ids.add(friend_id)
+
+    # Also include accepted request records for accounts created before the
+    # friendships collection was introduced.
+    for request_snap in svc().db.collection("friendRequests").stream():
+        row = request_snap.to_dict() or {}
+        if row.get("status") != "accepted":
+            continue
+        members = {row.get("from_id"), row.get("to_id")}
+        if g.device_id in members:
+            friend_id = next((member for member in members if member and member != g.device_id), None)
+            if friend_id:
+                friend_ids.add(friend_id)
+
+    rows = []
+    for friend_id in sorted(friend_ids):
         friend_profile = profile(friend_id)
         permission_snap = svc().ref("locationPermissions", location_permission_id(friend_id, g.device_id)).get()
         permission = permission_snap.to_dict() if permission_snap.exists else {}
