@@ -6,3 +6,5 @@
 __pycache__/
 *.py[cod]
 phone_tracker.db
+output/
+temp/
