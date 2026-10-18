@@ -28,9 +28,13 @@ def register_realtime(socketio, app):
         if not snapshot.exists:
             return None
         data = snapshot.to_dict() or {}
+        owner_profile = service.ref("users", owner_id).get().to_dict() or {}
+        owner_model = owner_profile.get("device_model") or owner_profile.get("name") or owner_id
         preference = service.ref("userPreferences", owner_id).get().to_dict() or {}
         return {
             "device_id": owner_id,
+            "name": owner_model,
+            "device_model": owner_model,
             "latitude": data.get("latitude"),
             "longitude": data.get("longitude"),
             "battery_percentage": data.get("battery_percentage"),
@@ -70,7 +74,9 @@ def register_realtime(socketio, app):
         if not preference.get("location_sharing_enabled", True): return
         location = {"latitude":lat,"longitude":lon,"battery_percentage":battery,"updated_at":service.now()}
         service.ref("latestLocations", device_id).set(location, merge=True)
-        payload = {"device_id":device_id, **location, "updated_at":location["updated_at"].isoformat(), "sharing_enabled":True}
+        owner_profile = service.ref("users", device_id).get().to_dict() or {}
+        owner_model = owner_profile.get("device_model") or owner_profile.get("name") or device_id
+        payload = {"device_id":device_id, "name":owner_model, "device_model":owner_model, **location, "updated_at":location["updated_at"].isoformat(), "sharing_enabled":True}
         recipients = set()
         for recipient in friend_ids(service, device_id):
             if can_view(service, device_id, recipient):
