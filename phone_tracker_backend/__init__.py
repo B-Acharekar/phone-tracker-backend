@@ -21,6 +21,7 @@ def create_app(config_class=Config):
     CORS(app)
     socketio.init_app(app, cors_allowed_origins="*")
     app.extensions["firebase_service"] = FirebaseService()
+    app.extensions["socketio"] = socketio
     app.register_blueprint(installations_bp, url_prefix="/api/v1")
     app.register_blueprint(friends_bp, url_prefix="/api/v1")
     app.register_blueprint(profile_bp, url_prefix="/api/v1")

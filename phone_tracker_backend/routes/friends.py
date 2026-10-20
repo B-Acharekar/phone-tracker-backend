@@ -124,7 +124,32 @@ def decide(request_id):
     if action == "accept" and current != "pending": return {"error":"request already decided"},409
     if action == "reject" and current == "rejected": return {"error":"request already rejected"},409
     status="accepted" if action=="accept" else "rejected"; ref.update({"status":status,"decided_at":svc().now()})
-    if action=="accept": svc().ref("friendships", "_".join(sorted([data["from_id"],data["to_id"]]))).set({"members":[data["from_id"],data["to_id"]],"created_at":svc().now()})
+    if action=="accept":
+        members = [data["from_id"], data["to_id"]]
+        now = svc().now()
+        svc().ref("friendships", "_".join(sorted(members))).set({"members":members,"created_at":now})
+        # Acceptance is the consent boundary for this product: both devices
+        # start sharing and can view one another immediately. The Android
+        # clients reconcile this state on resume and receive the socket event
+        # when they are already connected.
+        for owner_id, viewer_id in ((members[0], members[1]), (members[1], members[0])):
+            svc().ref("locationPermissions", location_permission_id(owner_id, viewer_id)).set({
+                "owner_id": owner_id,
+                "viewer_id": viewer_id,
+                "enabled": True,
+                "request_status": "accepted",
+                "updated_at": now,
+            }, merge=True)
+            svc().ref("userPreferences", owner_id).set({"location_sharing_enabled": True}, merge=True)
+        socketio = current_app.extensions.get("socketio")
+        if socketio:
+            for member_id in members:
+                friend_id = next(item for item in members if item != member_id)
+                socketio.emit("friendship_accepted", {
+                    "friend_id": friend_id,
+                    "friend_name": profile(friend_id)["name"],
+                    "sharing_enabled": True,
+                }, room=member_id)
     elif current == "accepted": svc().ref("friendships", "_".join(sorted([data["from_id"],data["to_id"]]))).delete()
     return {"request_id":request_id,"status":status}
 

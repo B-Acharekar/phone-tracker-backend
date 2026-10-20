@@ -29,12 +29,12 @@ def register_realtime(socketio, app):
             return None
         data = snapshot.to_dict() or {}
         owner_profile = service.ref("users", owner_id).get().to_dict() or {}
-        owner_model = owner_profile.get("device_model") or owner_profile.get("name") or owner_id
+        owner_name = owner_profile.get("name") or owner_profile.get("device_model") or owner_id
         preference = service.ref("userPreferences", owner_id).get().to_dict() or {}
         return {
             "device_id": owner_id,
-            "name": owner_model,
-            "device_model": owner_model,
+            "name": owner_name,
+            "device_model": owner_profile.get("device_model") or owner_name,
             "latitude": data.get("latitude"),
             "longitude": data.get("longitude"),
             "battery_percentage": data.get("battery_percentage"),
@@ -59,6 +59,12 @@ def register_realtime(socketio, app):
         # This is the equivalent of the reference app's active_shares listener.
         for friend_id in friend_ids(service, device_id):
             if can_view(service, friend_id, device_id):
+                friend_profile = service.ref("users", friend_id).get().to_dict() or {}
+                emit("friendship_accepted", {
+                    "friend_id": friend_id,
+                    "friend_name": friend_profile.get("name") or friend_profile.get("device_model") or friend_id,
+                    "sharing_enabled": True,
+                })
                 payload = location_payload(service, friend_id)
                 if payload:
                     emit("location_updated", payload)
@@ -75,8 +81,8 @@ def register_realtime(socketio, app):
         location = {"latitude":lat,"longitude":lon,"battery_percentage":battery,"updated_at":service.now()}
         service.ref("latestLocations", device_id).set(location, merge=True)
         owner_profile = service.ref("users", device_id).get().to_dict() or {}
-        owner_model = owner_profile.get("device_model") or owner_profile.get("name") or device_id
-        payload = {"device_id":device_id, "name":owner_model, "device_model":owner_model, **location, "updated_at":location["updated_at"].isoformat(), "sharing_enabled":True}
+        owner_name = owner_profile.get("name") or owner_profile.get("device_model") or device_id
+        payload = {"device_id":device_id, "name":owner_name, "device_model":owner_profile.get("device_model") or owner_name, **location, "updated_at":location["updated_at"].isoformat(), "sharing_enabled":True}
         recipients = set()
         for recipient in friend_ids(service, device_id):
             if can_view(service, device_id, recipient):
