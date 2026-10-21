@@ -58,3 +58,10 @@ Register an installation first with `POST /api/v1/installations` using `{ "devic
 For the two Firebase projects, deploy this same backend twice. Point the 0011 deployment at the 0011 service-account JSON and the 0012 deployment at the 0012 service-account JSON using separate `GOOGLE_APPLICATION_CREDENTIALS` values and separate backend URLs. The API does not receive or store an app ID.
 
 Location telemetry is validated and delivered directly over the authenticated Socket.IO channel. Firestore stores only a periodic snapshot (one hour by default) in `latestLocations/{device_id}`. The snapshot throttle is process-local; use a shared cache/lock before running multiple backend instances.
+
+## Group APIs
+
+All group endpoints require the `X-Device-ID`, `X-App-ID`, and `X-Session-Token` headers returned by installation registration.
+
+- `GET /api/v1/groups` returns the authenticated device's groups.
+- `DELETE /api/v1/groups/{group_id}` deletes a group when called by its owner. The group's memberships and invite records are deleted with it.
