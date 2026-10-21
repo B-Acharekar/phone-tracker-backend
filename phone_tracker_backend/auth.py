@@ -9,7 +9,7 @@ def require_device(fn):
         app_id = request.headers.get("X-App-ID") or payload.get("app_id")
         token = request.headers.get("X-Session-Token") or payload.get("session_token")
         service = current_app.extensions["firebase_service"]
-        if not device_id or app_id != current_app.config["SERVICE_APP_ID"] or not token or not service.valid_session(device_id, app_id, token):
+        if not device_id or app_id not in current_app.config["SUPPORTED_APP_IDS"] or not token or not service.valid_session(device_id, app_id, token):
             return {"error": "valid device ID, app ID, and session token are required"}, 401
         g.device_id, g.app_id = device_id, app_id
         return fn(*args, **kwargs)

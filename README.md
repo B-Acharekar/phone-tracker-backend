@@ -28,7 +28,7 @@ The backend uses Firebase Admin SDK and Firestore. It requires a Firebase servic
 - Location includes latitude, longitude, accuracy, battery percentage, and update time.
 # Phone Tracker Backend
 
-Modular Flask backend for Phone Tracker 0012 and companion 0011.
+Modular Flask backend for Phone Tracker 0011 and 0012 in one deployment.
 
 ## Structure
 
@@ -53,9 +53,9 @@ $env:GOOGLE_APPLICATION_CREDENTIALS='C:\secure\firebase-service-account.json'
 python app.py
 ```
 
-Register an installation first with `POST /api/v1/installations` using `{ "device_id": "...", "app_id": "phone-tracker-0012" }`. Android ID is the user identity; app ID is only a fixed embedded application identifier. Store the returned session token securely in Android and send it with every REST request and Socket.IO authentication event.
+Register an installation first with `POST /api/v1/installations` using either `{ "device_id": "...", "app_id": "phone-tracker-0011" }` or `{ "device_id": "...", "app_id": "phone-tracker-0012" }`. Android ID is the user identity and app ID identifies which client variant is connecting. Store the returned session token securely in Android and send it with every REST request and Socket.IO authentication event.
 
-For the two Firebase projects, deploy this same backend twice. Point the 0011 deployment at the 0011 service-account JSON and the 0012 deployment at the 0012 service-account JSON using separate `GOOGLE_APPLICATION_CREDENTIALS` values and separate backend URLs. The API does not receive or store an app ID.
+Both variants run against the same backend URL and shared Firebase project. Configure one `GOOGLE_APPLICATION_CREDENTIALS` value and keep `SUPPORTED_APP_IDS=phone-tracker-0011,phone-tracker-0012`. The backend validates the app ID on every REST and Socket.IO authentication request.
 
 Location telemetry is validated and delivered directly over the authenticated Socket.IO channel. Firestore stores only a periodic snapshot (one hour by default) in `latestLocations/{device_id}`. The snapshot throttle is process-local; use a shared cache/lock before running multiple backend instances.
 

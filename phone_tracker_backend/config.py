@@ -3,16 +3,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ACTIVE_APP_ID = os.getenv("ACTIVE_APP_ID", "phone-tracker-0012")
-credential_key = "APP_0011_CREDENTIALS" if ACTIVE_APP_ID == "phone-tracker-0011" else "APP_0012_CREDENTIALS"
-project_key = "APP_0011_FIREBASE_PROJECT_ID" if ACTIVE_APP_ID == "phone-tracker-0011" else "APP_0012_FIREBASE_PROJECT_ID"
-credential_path = os.getenv(credential_key, "")
+DEFAULT_APP_IDS = ("phone-tracker-0011", "phone-tracker-0012")
+configured_app_ids = os.getenv("SUPPORTED_APP_IDS", ",".join(DEFAULT_APP_IDS))
+SUPPORTED_APP_IDS = tuple(item.strip() for item in configured_app_ids.split(",") if item.strip())
+
+# Both Android variants use one backend deployment and one Firebase project.
+# Keep the old per-variant variables as fallbacks so existing deployments can
+# migrate without changing their secret names immediately.
+credential_path = (
+    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    or os.getenv("APP_0011_CREDENTIALS")
+    or os.getenv("APP_0012_CREDENTIALS")
+    or ""
+)
 if credential_path:
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credential_path
 
 class Config:
-    SERVICE_APP_ID = ACTIVE_APP_ID
-    FIREBASE_PROJECT_ID = os.getenv(project_key, "")
+    SUPPORTED_APP_IDS = SUPPORTED_APP_IDS
+    FIREBASE_PROJECT_ID = (
+        os.getenv("FIREBASE_PROJECT_ID")
+        or os.getenv("APP_0011_FIREBASE_PROJECT_ID")
+        or os.getenv("APP_0012_FIREBASE_PROJECT_ID")
+        or ""
+    )
     GROUP_ICONS = {"home", "heart", "building", "tree", "people"}
     INVITE_TTL_HOURS = int(os.getenv("INVITE_TTL_HOURS", "24"))
     SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))

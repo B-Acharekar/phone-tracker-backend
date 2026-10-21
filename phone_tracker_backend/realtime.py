@@ -92,7 +92,7 @@ def register_realtime(socketio, app):
     @socketio.on("authenticate")
     def authenticate(data):
         data=data or {}; service=app.extensions["firebase_service"]; device_id=data.get("device_id"); app_id=data.get("app_id"); token=data.get("session_token")
-        if app_id != app.config["SERVICE_APP_ID"] or not device_id or not service.valid_session(device_id, app_id, token): emit("error", {"error":"authentication failed"}); return
+        if app_id not in app.config["SUPPORTED_APP_IDS"] or not device_id or not service.valid_session(device_id, app_id, token): emit("error", {"error":"authentication failed"}); return
         owner_profile = service.ref("users", device_id).get().to_dict() or {}
         preference = service.ref("userPreferences", device_id).get().to_dict() or {}
         recipients, authorized_friends = cache_recipients(service, device_id)
