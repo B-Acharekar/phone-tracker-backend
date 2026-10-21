@@ -2,6 +2,9 @@ from flask import request
 from flask_socketio import emit, join_room
 from threading import Lock
 
+def realtime_room(app_id, device_id):
+    return f"{app_id}:{device_id}"
+
 def friendship_id(first_id, second_id):
     return "_".join(sorted([first_id, second_id]))
 
@@ -91,20 +94,29 @@ def register_realtime(socketio, app):
         }
     @socketio.on("authenticate")
     def authenticate(data):
-        data=data or {}; service=app.extensions["firebase_service"]; device_id=data.get("device_id"); app_id=data.get("app_id"); token=data.get("session_token")
-        if app_id not in app.config["SUPPORTED_APP_IDS"] or not device_id or not service.valid_session(device_id, app_id, token): emit("error", {"error":"authentication failed"}); return
+        data=data or {}; registry=app.extensions["firebase_service"]; device_id=data.get("device_id"); app_id=data.get("app_id"); token=data.get("session_token")
+        if app_id not in app.config["SUPPORTED_APP_IDS"] or not device_id:
+            emit("error", {"error":"authentication failed"}); return
+        try:
+            service = registry.for_app(app_id)
+            if not service.valid_session(device_id, app_id, token):
+                emit("error", {"error":"authentication failed"}); return
+        except Exception:
+            app.logger.exception("Socket authentication could not reach Firebase for %s", app_id)
+            emit("error", {"error":"backend data service temporarily unavailable"}); return
         owner_profile = service.ref("users", device_id).get().to_dict() or {}
         preference = service.ref("userPreferences", device_id).get().to_dict() or {}
         recipients, authorized_friends = cache_recipients(service, device_id)
         session = {
             "device_id": device_id,
+            "app_id": app_id,
             "owner_name": owner_profile.get("name") or owner_profile.get("device_model") or device_id,
             "device_model": owner_profile.get("device_model") or owner_profile.get("name") or "Android device",
             "sharing_enabled": bool(preference.get("location_sharing_enabled", False)),
             "recipients": recipients,
         }
         sessions[request.sid] = session
-        join_room(device_id)
+        join_room(realtime_room(app_id, device_id))
         # Hydrate the map immediately with each friend's persisted last location.
         # This is the equivalent of the reference app's active_shares listener.
         for friend_id in authorized_friends:
@@ -120,9 +132,14 @@ def register_realtime(socketio, app):
         emit("authenticated", {"device_id":device_id})
     @socketio.on("location_update")
     def location_update(data):
-        service=app.extensions["firebase_service"]; session=sessions.get(request.sid); data=data or {}
+        registry=app.extensions["firebase_service"]; session=sessions.get(request.sid); data=data or {}
         if not session: emit("error", {"error":"authenticate first"}); return
         device_id=session["device_id"]
+        try:
+            service = registry.for_app(session["app_id"])
+        except Exception:
+            app.logger.exception("Socket location update could not reach Firebase for %s", session.get("app_id"))
+            emit("error", {"error":"backend data service temporarily unavailable"}); return
         try: lat=float(data["latitude"]); lon=float(data["longitude"]); battery=float(data["battery_percentage"])
         except (KeyError,TypeError,ValueError): emit("error", {"error":"latitude, longitude and battery_percentage are required"}); return
         if not (-90<=lat<=90 and -180<=lon<=180 and 0<=battery<=100): emit("error", {"error":"invalid telemetry"}); return
@@ -139,6 +156,6 @@ def register_realtime(socketio, app):
         # Firestore reads are needed for the live path.
         payload = {"device_id":device_id, "name":session["owner_name"], "device_model":session["device_model"], **location, "updated_at":location["updated_at"].isoformat(), "sharing_enabled":True}
         for recipient in session["recipients"]:
-            emit("location_updated", payload, room=recipient)
+            emit("location_updated", payload, room=realtime_room(session["app_id"], recipient))
     @socketio.on("disconnect")
     def disconnect(): sessions.pop(request.sid, None)

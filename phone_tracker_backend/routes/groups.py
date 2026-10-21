@@ -1,8 +1,8 @@
 from datetime import timedelta
 from flask import Blueprint, request, current_app, g
-from ..auth import require_device
+from ..auth import current_service, require_device
 bp=Blueprint("groups",__name__)
-def svc(): return current_app.extensions["firebase_service"]
+def svc(): return current_service()
 
 def iso_timestamp(value):
     if value is None:

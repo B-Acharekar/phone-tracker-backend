@@ -1,5 +1,5 @@
 from flask import Blueprint, request, current_app, g
-from ..auth import require_device
+from ..auth import current_service, require_device
 
 bp = Blueprint("feedback", __name__)
 
@@ -13,7 +13,7 @@ def submit_feedback():
         return {"error": "rating must be between 1 and 5"}, 400
     if not feedback or len(feedback) > 500:
         return {"error": "feedback must contain 1 to 500 characters"}, 400
-    service = current_app.extensions["firebase_service"]
+    service = current_service()
     ref = service.ref("feedback", f"{g.device_id}_{int(service.now().timestamp())}")
     ref.set({"device_id": g.device_id, "rating": rating, "feedback": feedback, "created_at": service.now()})
     return {"saved": True}, 201

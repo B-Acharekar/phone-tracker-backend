@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from flask import Blueprint, request, current_app, g
-from ..auth import require_device
+from ..auth import current_service, require_device
+from ..realtime import realtime_room
 bp = Blueprint("friends", __name__)
-def svc(): return current_app.extensions["firebase_service"]
+def svc(): return current_service()
 
 def friendship_id(first_id, second_id):
     return "_".join(sorted([first_id, second_id]))
@@ -149,11 +150,13 @@ def decide(request_id):
                     "friend_id": friend_id,
                     "friend_name": profile(friend_id)["name"],
                     "sharing_enabled": True,
-                }, room=member_id)
+                }, room=realtime_room(g.app_id, member_id))
         # Update already-authenticated sockets so the next live coordinate is
         # delivered without forcing either device to reconnect.
         realtime_sessions = current_app.extensions.get("realtime_sessions", {})
         for session in list(realtime_sessions.values()):
+            if session.get("app_id") != g.app_id:
+                continue
             member_id = session.get("device_id")
             if member_id not in members:
                 continue
