@@ -57,4 +57,4 @@ Register an installation first with `POST /api/v1/installations` using `{ "devic
 
 For the two Firebase projects, deploy this same backend twice. Point the 0011 deployment at the 0011 service-account JSON and the 0012 deployment at the 0012 service-account JSON using separate `GOOGLE_APPLICATION_CREDENTIALS` values and separate backend URLs. The API does not receive or store an app ID.
 
-Location telemetry is deliberately not written to Firestore on every update. It is validated and delivered over the authenticated realtime channel. The current implementation keeps only an in-process latest-value cache; use a shared Redis/socket message queue before running multiple backend instances.
+Location telemetry is validated and delivered directly over the authenticated Socket.IO channel. Firestore stores only a periodic snapshot (one hour by default) in `latestLocations/{device_id}`. The snapshot throttle is process-local; use a shared cache/lock before running multiple backend instances.

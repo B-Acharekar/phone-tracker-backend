@@ -150,6 +150,16 @@ def decide(request_id):
                     "friend_name": profile(friend_id)["name"],
                     "sharing_enabled": True,
                 }, room=member_id)
+        # Update already-authenticated sockets so the next live coordinate is
+        # delivered without forcing either device to reconnect.
+        realtime_sessions = current_app.extensions.get("realtime_sessions", {})
+        for session in list(realtime_sessions.values()):
+            member_id = session.get("device_id")
+            if member_id not in members:
+                continue
+            friend_id = next(item for item in members if item != member_id)
+            session["sharing_enabled"] = True
+            session.setdefault("recipients", set()).add(friend_id)
     elif current == "accepted": svc().ref("friendships", "_".join(sorted([data["from_id"],data["to_id"]]))).delete()
     return {"request_id":request_id,"status":status}
 

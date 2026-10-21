@@ -17,3 +17,6 @@ class Config:
     INVITE_TTL_HOURS = int(os.getenv("INVITE_TTL_HOURS", "24"))
     SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
     MAX_LOCATION_UPDATES_PER_MINUTE = int(os.getenv("MAX_LOCATION_UPDATES_PER_MINUTE", "120"))
+    # Live coordinates are delivered over Socket.IO. Firestore keeps only a
+    # periodic snapshot so updates do not consume a write on every event.
+    LOCATION_SNAPSHOT_INTERVAL_SECONDS = int(os.getenv("LOCATION_SNAPSHOT_INTERVAL_SECONDS", "3600"))
