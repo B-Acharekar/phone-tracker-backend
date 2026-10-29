@@ -70,4 +70,6 @@ Location telemetry is validated and delivered directly over the authenticated So
 All group endpoints require the `X-Device-ID`, `X-App-ID`, and `X-Session-Token` headers returned by installation registration.
 
 - `GET /api/v1/groups` returns the authenticated device's groups.
+- `POST /api/v1/groups/{group_id}/members` lets only the 0011 group owner add an accepted friend. Non-owners receive `403`; existing members receive `409`.
+- `GET /api/v1/groups/{group_id}/details` returns the 0011 locator name, invite code, icon, caller role, and current member profiles.
 - `DELETE /api/v1/groups/{group_id}` deletes a group when called by its owner. The group's memberships and invite records are deleted with it.

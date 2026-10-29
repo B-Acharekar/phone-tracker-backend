@@ -149,6 +149,88 @@ def list_group_members(group_id):
         return {"error": "group not found"}, 404
     return {"group_id": group_id, "members": group_members(group_id)}
 
+@bp.post("/groups/<group_id>/members")
+@require_device
+def add_group_member(group_id):
+    """Add an accepted 0011 friend to a group; only the group owner may do so."""
+    if g.app_id != "phone-tracker-0011":
+        return {"error": "group member endpoint not found"}, 404
+
+    group_ref = svc().ref("groups", group_id)
+    group_snap = group_ref.get()
+    if not group_snap.exists:
+        return {"error": "group not found"}, 404
+
+    group = group_snap.to_dict() or {}
+    if group.get("owner_id") != g.device_id:
+        return {"error": "only the group owner can add members"}, 403
+
+    friend_id = str((request.get_json(silent=True) or {}).get("friend_id", "")).strip()
+    if not friend_id or friend_id == g.device_id:
+        return {"error": "a valid friend_id is required"}, 400
+    if friend_id not in accepted_friend_ids():
+        return {"error": "the user must be an accepted friend"}, 403
+
+    membership_ref = svc().ref("groupMemberships", f"{group_id}_{friend_id}")
+    if membership_ref.get().exists:
+        return {"error": "member is already in this group"}, 409
+
+    membership_ref.set({
+        "group_id": group_id,
+        "device_id": friend_id,
+        "role": "member",
+        "created_at": svc().now(),
+    })
+    return {
+        "status": "success",
+        "message": "Member added successfully",
+    }, 201
+
+@bp.get("/groups/<group_id>/details")
+@require_device
+def group_details(group_id):
+    """Return the 0011 locator details screen data for a group member."""
+    if g.app_id != "phone-tracker-0011":
+        return {"error": "group details endpoint not found"}, 404
+
+    group_snap = svc().ref("groups", group_id).get()
+    if not group_snap.exists:
+        return {"error": "group not found"}, 404
+
+    group = group_snap.to_dict() or {}
+    requester_membership = svc().ref("groupMemberships", f"{group_id}_{g.device_id}").get()
+    if not requester_membership.exists:
+        return {"error": "group not found"}, 404
+
+    code = None
+    invitations = svc().db.collection("groupInvitations").where("group_id", "==", group_id).stream()
+    for invitation_snap in invitations:
+        invitation = invitation_snap.to_dict() or {}
+        if invitation.get("code"):
+            code = invitation["code"]
+            if invitation.get("status") == "active":
+                break
+
+    members = []
+    for member in group_members(group_id):
+        member["role"] = "admin" if member.get("role") == "owner" else "member"
+        members.append(member)
+
+    requester_role = (requester_membership.to_dict() or {}).get("role")
+    if requester_role == "owner" or group.get("owner_id") == g.device_id:
+        requester_role = "admin"
+    else:
+        requester_role = "member"
+
+    return {
+        "group_id": group_id,
+        "name": group.get("name"),
+        "code": code,
+        "icon": group.get("icon"),
+        "user_role": requester_role,
+        "members": members,
+    }
+
 @bp.delete("/groups/<group_id>")
 @require_device
 def delete_group(group_id):
