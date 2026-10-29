@@ -19,11 +19,15 @@ app_project_ids = {
     "phone-tracker-0011": os.getenv("APP_0011_FIREBASE_PROJECT_ID", "") or shared_project_id,
     "phone-tracker-0012": os.getenv("APP_0012_FIREBASE_PROJECT_ID", "") or shared_project_id,
 }
+app_storage_buckets = {
+    "phone-tracker-0011": os.getenv("APP_0011_STORAGE_BUCKET", ""),
+}
 
 class Config:
     SUPPORTED_APP_IDS = SUPPORTED_APP_IDS
     APP_CREDENTIALS = app_credentials
     APP_PROJECT_IDS = app_project_ids
+    APP_STORAGE_BUCKETS = app_storage_buckets
     FIREBASE_PROJECT_ID = shared_project_id
     GROUP_ICONS = {"home", "heart", "building", "tree", "people"}
     INVITE_TTL_HOURS = int(os.getenv("INVITE_TTL_HOURS", "24"))

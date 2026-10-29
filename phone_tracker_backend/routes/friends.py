@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, current_app, g
 from ..auth import current_service, require_device
 from ..realtime import realtime_room
+from ..profile_utils import UNKNOWN_USER, avatar_value, display_name, legacy_display_name, public_profile
 bp = Blueprint("friends", __name__)
 def svc(): return current_service()
 
@@ -11,8 +12,21 @@ def friendship_id(first_id, second_id):
 def profile(device_id):
     snap = svc().ref("users", device_id).get()
     data = snap.to_dict() if snap.exists else {}
+    if g.app_id == "phone-tracker-0011":
+        name = display_name(data, UNKNOWN_USER)
+        result = {
+            "name": name,
+            "display_name": name,
+            "profile_name": name,
+            "fullName": name,
+            "device_model": data.get("device_model") or data.get("name") or "Android device",
+            "avatar": avatar_value(data),
+        }
+        return result
+
+    # Keep the exact pre-refactor display behavior for production 0012.
     return {
-        "name": data.get("name") or data.get("device_model") or device_id,
+        "name": legacy_display_name(data, device_id),
         "device_model": data.get("device_model") or data.get("name") or "Android device",
         "avatar": data.get("avatar"),
     }
@@ -90,9 +104,14 @@ def list_requests():
     for snap in svc().db.collection("friendRequests").where(filter=__import__('google.cloud.firestore_v1.base_query',fromlist=['FieldFilter']).FieldFilter("to_id","==",g.device_id)).stream():
         row = {"id": snap.id, **snap.to_dict()}
         sender = svc().ref("users", row["from_id"]).get()
-        profile = sender.to_dict() if sender.exists else {}
-        row["from_name"] = profile.get("name") or row["from_id"]
-        row["from_avatar"] = profile.get("avatar", "🙂")
+        sender_data = sender.to_dict() if sender.exists else {}
+        if g.app_id == "phone-tracker-0011":
+            row["from_name"] = display_name(sender_data, UNKNOWN_USER)
+            row["from_avatar"] = avatar_value(sender_data) or "🙂"
+            row["from_profile"] = public_profile(row["from_id"], sender_data)
+        else:
+            row["from_name"] = sender_data.get("name") or row["from_id"]
+            row["from_avatar"] = sender_data.get("avatar", "🙂")
         rows.append(row)
     return {"requests":rows}
 
@@ -104,8 +123,12 @@ def list_sent_requests():
     for snap in svc().db.collection("friendRequests").where(filter=field_filter).stream():
         row={"id":snap.id,**snap.to_dict()}
         recipient=svc().ref("users", row["to_id"]).get()
-        profile=recipient.to_dict() if recipient.exists else {}
-        row["to_name"]=profile.get("name") or row["to_id"]
+        recipient_data=recipient.to_dict() if recipient.exists else {}
+        if g.app_id == "phone-tracker-0011":
+            row["to_name"] = display_name(recipient_data, UNKNOWN_USER)
+            row["to_profile"] = public_profile(row["to_id"], recipient_data)
+        else:
+            row["to_name"] = recipient_data.get("name") or row["to_id"]
         rows.append(row)
     return {"requests":rows}
 @bp.post("/friends/requests/<request_id>")
@@ -216,6 +239,16 @@ def list_friends():
             "location_request_status": permission.get("request_status", "none"),
             "last_location": None,
         }
+        if g.app_id == "phone-tracker-0011":
+            row.update({
+                "user_id": friend_id,
+                "userId": friend_id,
+                "display_name": friend_profile["name"],
+                "profile_name": friend_profile["name"],
+                "fullName": friend_profile["name"],
+                "profilePicture": friend_profile["avatar"],
+                "profile": public_profile(friend_id, svc().ref("users", friend_id).get().to_dict() or {}),
+            })
         if can_view and location:
             row["last_location"] = {
                 "device_id": friend_id,

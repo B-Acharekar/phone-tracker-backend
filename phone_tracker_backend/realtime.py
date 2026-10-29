@@ -1,6 +1,7 @@
 from flask import request
 from flask_socketio import emit, join_room
 from threading import Lock
+from .profile_utils import UNKNOWN_USER, display_name, legacy_display_name
 
 def realtime_room(app_id, device_id):
     return f"{app_id}:{device_id}"
@@ -74,15 +75,15 @@ def register_realtime(socketio, app):
         permission = service.ref("locationPermissions", permission_id(owner_id, viewer_id)).get().to_dict() or {}
         return permission.get("enabled") is True
 
-    def location_payload(service, owner_id):
+    def location_payload(service, owner_id, app_id):
         snapshot = service.ref("latestLocations", owner_id).get()
         if not snapshot.exists:
             return None
         data = snapshot.to_dict() or {}
         owner_profile = service.ref("users", owner_id).get().to_dict() or {}
-        owner_name = owner_profile.get("name") or owner_profile.get("device_model") or owner_id
+        owner_name = display_name(owner_profile, UNKNOWN_USER) if app_id == "phone-tracker-0011" else legacy_display_name(owner_profile, owner_id)
         preference = service.ref("userPreferences", owner_id).get().to_dict() or {}
-        return {
+        payload = {
             "device_id": owner_id,
             "name": owner_name,
             "device_model": owner_profile.get("device_model") or owner_name,
@@ -92,6 +93,13 @@ def register_realtime(socketio, app):
             "updated_at": data.get("updated_at").isoformat() if hasattr(data.get("updated_at"), "isoformat") else str(data.get("updated_at")),
             "sharing_enabled": bool(preference.get("location_sharing_enabled", False)),
         }
+        if app_id == "phone-tracker-0011":
+            payload.update({
+                "display_name": owner_name,
+                "profile_name": owner_name,
+                "fullName": owner_name,
+            })
+        return payload
     @socketio.on("authenticate")
     def authenticate(data):
         data=data or {}; registry=app.extensions["firebase_service"]; device_id=data.get("device_id"); app_id=data.get("app_id"); token=data.get("session_token")
@@ -110,7 +118,7 @@ def register_realtime(socketio, app):
         session = {
             "device_id": device_id,
             "app_id": app_id,
-            "owner_name": owner_profile.get("name") or owner_profile.get("device_model") or device_id,
+            "owner_name": display_name(owner_profile, UNKNOWN_USER) if app_id == "phone-tracker-0011" else legacy_display_name(owner_profile, device_id),
             "device_model": owner_profile.get("device_model") or owner_profile.get("name") or "Android device",
             "sharing_enabled": bool(preference.get("location_sharing_enabled", False)),
             "recipients": recipients,
@@ -121,12 +129,15 @@ def register_realtime(socketio, app):
         # This is the equivalent of the reference app's active_shares listener.
         for friend_id in authorized_friends:
             friend_profile = service.ref("users", friend_id).get().to_dict() or {}
-            emit("friendship_accepted", {
+            friendship_payload = {
                 "friend_id": friend_id,
-                "friend_name": friend_profile.get("name") or friend_profile.get("device_model") or friend_id,
+                "friend_name": display_name(friend_profile, UNKNOWN_USER) if app_id == "phone-tracker-0011" else legacy_display_name(friend_profile, friend_id),
                 "sharing_enabled": True,
-            })
-            payload = location_payload(service, friend_id)
+            }
+            if app_id == "phone-tracker-0011":
+                friendship_payload["display_name"] = friendship_payload["friend_name"]
+            emit("friendship_accepted", friendship_payload)
+            payload = location_payload(service, friend_id, app_id)
             if payload:
                 emit("location_updated", payload)
         emit("authenticated", {"device_id":device_id})

@@ -1,6 +1,7 @@
 from datetime import timedelta
 from flask import Blueprint, request, current_app, g
 from ..auth import current_service, require_device
+from ..profile_utils import public_profile
 bp=Blueprint("groups",__name__)
 def svc(): return current_service()
 
@@ -8,6 +9,53 @@ def iso_timestamp(value):
     if value is None:
         return None
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+def user_profile(device_id):
+    snap = svc().ref("users", device_id).get()
+    return public_profile(device_id, snap.to_dict() if snap.exists else {})
+
+def profile_for_group_list(device_id):
+    """Return the 0011 group-list profile plus current sharing state."""
+    profile = user_profile(device_id)
+    preference = svc().ref("userPreferences", device_id).get()
+    preference_data = preference.to_dict() if preference.exists else {}
+    profile["sharing_enabled"] = bool(preference_data.get("location_sharing_enabled", False))
+    return profile
+
+def group_members(group_id, include_sharing=False):
+    rows = []
+    memberships = svc().db.collection("groupMemberships").where("group_id", "==", group_id).stream()
+    for membership_snap in memberships:
+        membership = membership_snap.to_dict() or {}
+        member_id = membership.get("device_id")
+        if not member_id:
+            continue
+        profile = profile_for_group_list(member_id) if include_sharing else user_profile(member_id)
+        rows.append({
+            **profile,
+            "role": membership.get("role") or "member",
+            "created_at": iso_timestamp(membership.get("created_at")),
+        })
+    rows.sort(key=lambda member: (member.get("name", "").casefold(), member["device_id"]))
+    return rows
+
+def accepted_friend_ids():
+    friend_ids = set()
+    for friendship_snap in svc().db.collection("friendships").stream():
+        members = (friendship_snap.to_dict() or {}).get("members", [])
+        if g.device_id in members:
+            friend_ids.update(member for member in members if member and member != g.device_id)
+
+    # Include accepted requests from older records that do not have a
+    # corresponding friendships document yet.
+    for request_snap in svc().db.collection("friendRequests").stream():
+        row = request_snap.to_dict() or {}
+        if row.get("status") != "accepted":
+            continue
+        members = {row.get("from_id"), row.get("to_id")}
+        if g.device_id in members:
+            friend_ids.update(member for member in members if member and member != g.device_id)
+    return friend_ids
 
 def delete_documents(documents):
     """Delete Firestore documents in batches below Firestore's batch limit."""
@@ -41,6 +89,8 @@ def create_group():
 def list_groups():
     groups = []
     seen_group_ids = set()
+    is_0011 = g.app_id == "phone-tracker-0011"
+    friend_profiles = [profile_for_group_list(friend_id) for friend_id in sorted(accepted_friend_ids())] if is_0011 else []
     memberships = svc().db.collection("groupMemberships").where("device_id", "==", g.device_id).stream()
 
     for membership_snap in memberships:
@@ -56,17 +106,48 @@ def list_groups():
 
         group = group_snap.to_dict() or {}
         seen_group_ids.add(group_id)
-        groups.append({
+        group_response = {
             "group_id": group_id,
             "name": group.get("name"),
             "icon": group.get("icon"),
             "owner_id": group.get("owner_id"),
             "role": membership.get("role") or ("owner" if group.get("owner_id") == g.device_id else "member"),
             "created_at": iso_timestamp(group.get("created_at")),
-        })
+        }
+        if is_0011:
+            members = group_members(group_id, include_sharing=True)
+            group_response.update({
+                "groupId": group_id,
+                "groupName": group.get("name"),
+                "ownerId": group.get("owner_id"),
+                # `members` contains the people already in this group. `friends`
+                # contains every accepted friend available to the 0011 group UI.
+                "members": members,
+                "friends": friend_profiles,
+            })
+        groups.append(group_response)
 
     groups.sort(key=lambda group: (group.get("created_at") or "", group["group_id"]))
     return {"groups": groups}
+
+@bp.get("/groups/friends")
+@require_device
+def list_group_friends():
+    """Return every accepted friend with a display name for group pickers."""
+    if g.app_id != "phone-tracker-0011":
+        return {"error": "group friends endpoint not found"}, 404
+    return {"friends": [user_profile(friend_id) for friend_id in sorted(accepted_friend_ids())]}
+
+@bp.get("/groups/<group_id>/members")
+@require_device
+def list_group_members(group_id):
+    """Return all members of a group, including their public profile names."""
+    if g.app_id != "phone-tracker-0011":
+        return {"error": "group members endpoint not found"}, 404
+    membership = svc().ref("groupMemberships", f"{group_id}_{g.device_id}").get()
+    if not membership.exists:
+        return {"error": "group not found"}, 404
+    return {"group_id": group_id, "members": group_members(group_id)}
 
 @bp.delete("/groups/<group_id>")
 @require_device
